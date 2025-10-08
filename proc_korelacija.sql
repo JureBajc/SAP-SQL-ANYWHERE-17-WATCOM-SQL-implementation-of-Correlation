@@ -4,7 +4,8 @@ create procedure goinfo."proc_korelacija"(
 )
 begin
 	/*
-		procedura izračuna korelacijsko matriko za vse numerične stolpce.
+		procedura izračuna korelacijsko matriko za vse numerične stolpce 
+		ali cramer v za kategorične stolpce.
 		
 		parametri:
 		-in_query: poizvedba, ki vrne podatke
@@ -12,8 +13,8 @@ begin
 		
 		začetek: 02.10.2025
 		posodobljeno: 06.10.2025 -implementiran spearman
-		posodobljeno: 08.10.2025 -matematicno popravljen spearman
-		posodobljeno: 08.10.2025 -dodan cramers V in popravki
+		posodobljeno: 08.10.2025 -matematično popravljen spearman
+		posodobljeno: 08.10.2025 -dodan cramer v
 	*/
 	
 	declare sql_string long varchar;
@@ -57,8 +58,9 @@ begin
 	
 	execute immediate 'select * into #data_vir from (' || in_query || ') as vir_query';
 	
-	--cramers obdelaj kategorične spremenljivke
+	--cramer v za kategorične spremenljivke
 	if UPPER(in_method) = 'CRAMER' then
+		--identificiraj kategorične stolpce
 		insert into #cat_stolp (ime, stolp_v_red)
 		select
 			name,
@@ -68,13 +70,15 @@ begin
 			'char', 'varchar', 'long varchar', 'nchar', 'nvarchar'
 		);
 		
-		--cramers v za vsak par gorni trikotnik
+		--izračunaj cramer v za vsak par (gornji trikotnik)
 		for cramer_loop as cramer_cursor cursor for
 			select x.ime as col1, y.ime as col2
 			from #cat_stolp as x, #cat_stolp as y
 			where x.stolp_v_red < y.stolp_v_red
 		do
 			delete from #contingency;
+			
+			--ustvari kontigenčno tabelo
 			set sql_string = 
 				'insert into #contingency (cat1_value, cat2_value, observed_freq) ' ||
 				'select "' || col1 || '", "' || col2 || '", COUNT(*) ' ||
@@ -82,6 +86,8 @@ begin
 				'where "' || col1 || '" is not null and "' || col2 || '" is not null ' ||
 				'group by "' || col1 || '", "' || col2 || '"';
 			execute immediate sql_string;
+			
+			--izračunaj cramer v
 			begin
 				declare chi_square double;
 				declare n_total int;
@@ -91,6 +97,8 @@ begin
 				select SUM(observed_freq) into n_total from #contingency;
 				select COUNT(distinct cat1_value) into n_rows from #contingency;
 				select COUNT(distinct cat2_value) into n_cols from #contingency;
+				
+				--izračun chisquare statistike
 				select 
 					SUM(POWER(observed_freq - expected_freq, 2) / expected_freq)
 				into chi_square
@@ -112,7 +120,7 @@ begin
 				) chi_calc
 				where expected_freq > 0;
 				
-				--izračun cramers
+				--izračun cramer v: V = sqrt(χ² / (n * min(r-1, c-1)))
 				if n_total > 0 and chi_square is not null and (case when n_rows < n_cols then n_rows else n_cols end - 1) > 0 then
 					set cramers_v = SQRT(chi_square / (n_total * (case when n_rows < n_cols then n_rows else n_cols end - 1)));
 				else
@@ -122,16 +130,12 @@ begin
 				values (col1, col2, cramers_v);
 			end;
 		end for;
-		
-		--simetrična kopija
 		insert into #korelac (col1, col2, kore_vrednost) 
 		select col2, col1, kore_vrednost from #korelac;
-
-		--diagonala=1
 		insert into #korelac (col1, col2, kore_vrednost) 
 		select ime, ime, 1 from #cat_stolp;
 		
-		--pivot matrika
+		--pivot matrika za prikaz
 		select LIST('max(case when col2 = ''' || ime || ''' then kore_vrednost end) as "' || ime || '"', ', ' order by ime)
 		into pivot_stolp
 		from #cat_stolp;
@@ -149,6 +153,7 @@ begin
 		drop table #contingency;
 		
 	else
+		--numerične (pearson/spearman)
 		insert into #num_stolp (ime, stolp_v_red)
 		select
 			name,
@@ -165,6 +170,7 @@ begin
 			select list('row_number() over (order by "' || ime || '") as "rn_' || ime || '"', ', ') 
 			into rank_cols_inner
 			from #num_stolp;
+			
 			select list(
 				'(min("rn_' || ime || '") over (partition by "' || ime || '") + ' ||
 				'max("rn_' || ime || '") over (partition by "' || ime || '")) / 2.0 as "rank_' || ime || '"', 
@@ -172,19 +178,20 @@ begin
 			)
 			into rank_cols_outer
 			from #num_stolp;
+			
 			set sql_string = '
-			SELECT ' || rank_cols_outer || '
-			INTO #ranked_data
-			FROM (
-				SELECT *, ' || rank_cols_inner || '
-				FROM #data_vir
-			) as SubQuery';
+			select ' || rank_cols_outer || '
+			into #ranked_data
+			from (
+				select *, ' || rank_cols_inner || '
+				from #data_vir
+			) as subquery';
 			
 			execute immediate sql_string;
 			set source_table = '#ranked_data';
 			set col_prefix = 'rank_';
 		else
-			--pearson original podatk
+			--pearson uporablja originalne podatke
 			set source_table = '#data_vir';
 			set col_prefix = '';
 		end if;
@@ -216,7 +223,7 @@ begin
 		into pivot_stolp
 		from #num_stolp;
 		
-		--sestavi pivot
+		--sestavljen pivot
 		set sql_string = 
 			'select col1 as "Spremenljivka", ' || pivot_stolp || ' ' ||
 			'into goinfo.korelacija_rezultat ' ||
