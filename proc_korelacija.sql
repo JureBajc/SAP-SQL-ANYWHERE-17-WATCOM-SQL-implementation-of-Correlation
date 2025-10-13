@@ -46,7 +46,7 @@ begin
 		observed_freq int
 	) not transactional;
 	
-	if UPPER(in_method) not in ('PEARSON', 'SPEARMAN', 'CRAMER') then
+	if (in_method) not in ('PEARSON', 'SPEARMAN', 'CRAMER') then
 		raiserror 99999 'Neveljavna metoda. Uporabite PEARSON, SPEARMAN ali CRAMER.';
 		return;
 	end if;
@@ -58,8 +58,8 @@ begin
 	
 	execute immediate 'select * into #data_vir from (' || in_query || ') as vir_query';
 	
-	--cramer v za kategorične spremenljivke
-	if UPPER(in_method) = 'CRAMER' then
+	--cramer v
+	if (in_method) = 'CRAMER' then
 		--identificiraj kategorične stolpce
 		insert into #cat_stolp (ime, stolp_v_red)
 		select
@@ -70,7 +70,7 @@ begin
 			'char', 'varchar', 'long varchar', 'nchar', 'nvarchar'
 		);
 		
-		--izračunaj cramer v za vsak par (gornji trikotnik)
+		--izračunaj cramer v gornji trikotnik
 		for cramer_loop as cramer_cursor cursor for
 			select x.ime as col1, y.ime as col2
 			from #cat_stolp as x, #cat_stolp as y
@@ -119,8 +119,7 @@ begin
 					) col on c.cat2_value = col.cat2_value
 				) chi_calc
 				where expected_freq > 0;
-				
-				--izračun cramer v: V = sqrt(χ² / (n * min(r-1, c-1)))
+
 				if n_total > 0 and chi_square is not null and (case when n_rows < n_cols then n_rows else n_cols end - 1) > 0 then
 					set cramers_v = SQRT(chi_square / (n_total * (case when n_rows < n_cols then n_rows else n_cols end - 1)));
 				else
@@ -166,7 +165,7 @@ begin
 		);
 		
 		--spearman rangirani podatki
-		if UPPER(in_method) = 'SPEARMAN' then
+		if (in_method) = 'SPEARMAN' then
 			select list('row_number() over (order by "' || ime || '") as "rn_' || ime || '"', ', ') 
 			into rank_cols_inner
 			from #num_stolp;
@@ -244,8 +243,3 @@ begin
 	drop table #data_vir;
 	
 end
-
-
-
-call goinfo.proc_korelacija_heatmap('SELECT poda,podb,podc,podd FROM #T5', 'N', 'SPEARMAN');
-select * from dis_temp
