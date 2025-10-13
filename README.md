@@ -1,77 +1,124 @@
-# proc_korelacija.sql — Correlation Matrix Procedure for SAP SQL Anywhere 17
+# SAP SQL Anywhere 17 - Watcom SQL Implementation of Correlation Procedures
 
-This repository provides a powerful SQL stored procedure for calculating correlation matrices across all numeric and categorical columns in your dataset using SAP SQL Anywhere 17 (Watcom SQL).
-
-## 📄 What is `proc_korelacija.sql`?
-
-`proc_korelacija.sql` defines the stored procedure `goinfo.proc_korelacija`, which enables automated computation of correlation coefficients between variables in any query result set. The procedure supports:
-
-- **PEARSON**: Standard Pearson correlation for numeric columns
-- **SPEARMAN**: Rank-based Spearman correlation for numeric columns
-- **CRAMER**: Cramér's V calculation for categorical columns
-
-The procedure automatically pivots results into a correlation matrix for easy analysis.
-
-## ⚙️ How Does It Work?
-
-You call `goinfo.proc_korelacija` with:
-- `in_query`: Your SQL query returning the data to analyze
-- `in_method`: The correlation method (`PEARSON`, `SPEARMAN`, or `CRAMER`)
-
-Based on your input, the procedure:
-1. Identifies relevant columns (numeric or categorical)
-2. Calculates pairwise correlations using the selected method
-3. Generates a pivoted correlation matrix as the output table `goinfo.korelacija_rezultat`
-
-## 🚀 Usage Example
-
-```sql
--- Example usage for numeric columns with Spearman correlation:
-call goinfo.proc_korelacija(
-    'SELECT col1, col2, col3 FROM your_table',
-    'SPEARMAN'
-);
-
--- Example usage for categorical columns with Cramér's V:
-call goinfo.proc_korelacija(
-    'SELECT cat1, cat2 FROM your_table',
-    'CRAMER'
-);
-
--- View the resulting matrix:
-SELECT * FROM goinfo.korelacija_rezultat;
-```
-
-## 📝 Parameters
-
-- `in_query` (long varchar): SQL query string that returns the dataset to analyze.
-- `in_method` (long varchar): Correlation type. Options:
-  - `'PEARSON'` (default)
-  - `'SPEARMAN'`
-  - `'CRAMER'`
-
-## 📊 Output
-
-The output table `goinfo.korelacija_rezultat` contains the correlation matrix, with each variable as both a row and column, and the corresponding correlation coefficient as the cell value.
-
-## ❗ Error Handling
-
-If an invalid method is specified, the procedure raises:
-```
-Neveljavna metoda. Uporabite PEARSON, SPEARMAN ali CRAMER.
-```
-("Invalid method. Use PEARSON, SPEARMAN, or CRAMER.")
-
-## 🗂️ File Location
-
-- [`proc_korelacija.sql`](proc_korelacija.sql): Main procedure implementation
-
-## 📅 Version History
-
-- **2025-10-02**: Procedure created
-- **2025-10-06**: Spearman method implemented
-- **2025-10-08**: Mathematical fix for Spearman, added Cramér's V
+This repository provides a set of advanced SQL stored procedures for SAP SQL Anywhere 17 (Watcom SQL dialect) to compute correlation matrices and heatmaps for both numerical and categorical data. The procedures support multiple correlation methods and are designed for flexible exploratory data analysis directly within the database.
 
 ---
 
-**For further details, see the full implementation in [`proc_korelacija.sql`](proc_korelacija.sql).**
+## Features
+
+- **Correlation Matrix Calculation**  
+  Compute correlation matrices for all pairs of numeric columns (Pearson/Spearman) or categorical columns (Cramer's V).
+
+- **Asymmetric Correlation (Eta Squared)**
+  Calculate eta squared statistics for all combinations of categorical and numeric variables (asymmetric measure).
+
+- **Heatmap Output**  
+  Generate results in long format with optional color coding for visualization.
+
+- **Robust Input Handling**  
+  Accepts arbitrary SQL queries as input for data selection.
+
+- **Flexible Method Selection**  
+  Supports multiple correlation methods: `PEARSON`, `SPEARMAN`, `CRAMER`, and `ETA`.
+
+---
+
+## Stored Procedures
+
+### 1. `proc_korelacija`
+
+Calculates a correlation matrix for the provided query.
+
+**Parameters:**
+- `in_query` (long varchar): SQL query returning the source data.
+- `in_method` (long varchar): Correlation method (`PEARSON`, `SPEARMAN`, or `CRAMER`). Default is `PEARSON`.
+
+**Result:**  
+Creates/overwrites the table `goinfo.korelacija_rezultat` with the correlation matrix.
+
+### 2. `proc_korelacija_asim`
+
+Calculates an asymmetric eta squared matrix for categorical vs. numeric columns.
+
+**Parameters:**
+- `in_query` (long varchar): SQL query returning the source data.
+
+**Result:**  
+Creates/overwrites the table `goinfo.korelacija_rezultat` with the eta squared values.
+
+### 3. `proc_korelacija_heatmap`
+
+Router procedure that produces a heatmap-friendly long-format output and color encoding.
+
+**Parameters:**
+- `in_query` (long varchar): SQL query returning the source data.
+- `in_add_colors` (varchar(1)): `'y'` for color-coding output, `'n'` for none. Default `'y'`.
+- `in_method` (varchar(10)): Correlation method (`pearson`, `spearman`, `cramer`, or `eta`). Default is `pearson`.
+
+**Result:**  
+Populates the table `dis_temp` with heatmap data, ready for visualization.
+
+---
+
+## Usage Example
+
+```sql
+-- Example: Calculate Pearson correlation matrix for a table
+call goinfo.proc_korelacija('select * from my_table', 'PEARSON');
+
+-- Example: Calculate Cramer's V matrix for categorical variables
+call goinfo.proc_korelacija('select * from my_table', 'CRAMER');
+
+-- Example: Calculate eta squared for categorical vs numeric columns
+call goinfo.proc_korelacija_asim('select * from my_table');
+
+-- Example: Generate a heatmap for all correlations with color coding
+call goinfo.proc_korelacija_heatmap('select * from my_table', 'y', 'pearson');
+```
+
+---
+
+## Output Tables
+
+- **`goinfo.korelacija_rezultat`**: Contains the correlation or eta squared matrix (pivoted format).
+- **`dis_temp`**: Contains long-format heatmap data (for visualization).
+
+---
+
+## Supported Methods
+
+| Method    | Description                                   | Procedure(s)         |
+|-----------|-----------------------------------------------|----------------------|
+| PEARSON   | Standard Pearson correlation (numeric)        | proc_korelacija      |
+| SPEARMAN  | Rank-based Spearman correlation (numeric)     | proc_korelacija      |
+| CRAMER    | Cramer's V for categorical variables          | proc_korelacija      |
+| ETA       | Eta squared (categorical vs. numeric, asym.)  | proc_korelacija_asim |
+
+---
+
+## Requirements
+
+- **SAP SQL Anywhere 17** or compatible version.
+- Sufficient privileges to create/drop tables in the target schema.
+- The schema `goinfo` must exist or be created prior to usage.
+
+---
+
+## Notes
+
+- Procedures automatically detect column types via `sa_describe_query`.
+- All intermediate tables are managed as local temporary tables.
+- Output tables are overwritten on each procedure call.
+- Error handling is basic; ensure queries are well-formed for best results.
+
+---
+
+## License
+
+MIT License
+
+---
+
+## Author
+
+[JureBajc](https://github.com/JureBajc)
