@@ -50,7 +50,7 @@ begin
         row_number() over (order by name) as stolp_v_red
     from sa_describe_query('select * from #data_vir')
     where domain_name in (
-        'char', 'varchar', 'long varchar', 'nchar', 'nvarchar'
+        'char', 'varchar', 'long varchar', 'nchar', 'nvarchar','long nvarchar'
     );
     insert into #num_stolp (ime, stolp_v_red)
     select
